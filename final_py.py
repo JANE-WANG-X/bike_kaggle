@@ -341,12 +341,12 @@ arr_mapping = {
 }
 
 
-tran = pd.read_csv('data/transportation_lines.csv')
-#tran = pd.read_csv(Path("/kaggle/input/externals/transportation_lines.csv"))
+#tran = pd.read_csv('data/transportation_lines.csv')
+tran = pd.read_csv(Path("/kaggle/input/externals/transportation_lines.csv"))
 tran = external_pre_pipeline.fit_transform(tran)
 
-weather_data = pd.read_csv('data/weather.csv')
-#weather_data = pd.read_csv('/kaggle/input/externals/weather.csv')
+#weather_data = pd.read_csv('data/weather.csv')
+weather_data = pd.read_csv('/kaggle/input/externals/weather.csv')
 weather_transformer = WeatherDataTransformer(columns_to_cap, columns_to_scale)
 weather = weather_transformer.fit_transform(weather_data)
 weather = external_pre_pipeline.fit_transform(weather)
@@ -367,8 +367,8 @@ data = pd.read_parquet(Path("/kaggle/input/mdsb-2023/train.parquet"))
 train_data = pipeline_train.fit_transform(data)
 train_data.sort_values('date', inplace=True)
 
-final_test = pd.read_parquet(Path("data/final_test.parquet"))
-#final_test = pd.read_parquet(Path("/kaggle/input/mdsb-2023/final_test.parquet"))
+#final_test = pd.read_parquet(Path("data/final_test.parquet"))
+final_test = pd.read_parquet(Path("/kaggle/input/mdsb-2023/final_test.parquet"))
 
 test_data = pipeline_test.fit_transform(final_test)
 
