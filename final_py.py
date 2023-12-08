@@ -383,7 +383,7 @@ y_train = train_data['log_bike_count']
 
 X_test = test_data[features]
 
-categorical_features = ['year','month', 'day', 'weekday', 'hour', 'counter_id', 'is_weekday','arr','is_day','is_confinement']
+categorical_features = ['year','month', 'day', 'weekday', 'hour', 'counter_id', 'is_weekday','arr','is_day','is_confinement','season']
 numeric_features = X_train.columns.difference(categorical_features)
 
 model_pipeline = create_model_pipeline(categorical_features, numeric_features, X_train, y_train)
