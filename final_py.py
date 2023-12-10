@@ -89,26 +89,6 @@ def create_season(X):
     return seasons.reshape(-1, 1)
 
 
-class HourlyMeanRankTransformer(BaseEstimator, TransformerMixin):
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X):
-        hourly_mean = train_data.groupby('hour')['log_bike_count'].mean().reset_index()
-        hourly_mean['rank'] = hourly_mean['log_bike_count'].rank(ascending=False, method='dense')
-        return X.merge(hourly_mean[['hour', 'rank']], on='hour', how='left')
-
-
-class MonthlyMeanRankTransformer(BaseEstimator, TransformerMixin):
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X):
-        monthly_mean = train_data.groupby('month')['log_bike_count'].mean().reset_index()
-        monthly_mean['rank_month'] = monthly_mean['log_bike_count'].rank(ascending=False, method='dense')
-        return X.merge(monthly_mean[['month', 'rank_month']], on='month', how='left')
-
-
 class MergeDataTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, dataframe, on, how='left'):
         self.dataframe = dataframe
@@ -354,8 +334,6 @@ weather = external_pre_pipeline.fit_transform(weather)
 
 
 pipeline_external = Pipeline([
-    ('hourly_mean_rank', HourlyMeanRankTransformer()),
-    ('monthly_mean_rank', MonthlyMeanRankTransformer()),
     ('merge_data', MergeDataTransformer(tran, on='site_name')),
     ('array_mapping', ArrayMappingTransformer(arr_mapping)),
     ('confinement_flag', ConfinementFlagTransformer()),
