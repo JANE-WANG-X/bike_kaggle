@@ -449,3 +449,4 @@ predictions_df = pd.DataFrame({
 submission_df = predictions_df.sort_values(by='original_index').reset_index(drop=True)
 # Create a final submission DataFrame with 'Id' and 'log_bike_count'
 final_submission = submission_df.rename(columns={'original_index': 'Id'})
+final_submission.to_csv('submission.csv', index=False)
