@@ -89,6 +89,26 @@ def create_season(X):
     return seasons.reshape(-1, 1)
 
 
+class HourlyMeanRankTransformer(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        hourly_mean = train_data.groupby('hour')['log_bike_count'].mean().reset_index()
+        hourly_mean['rank'] = hourly_mean['log_bike_count'].rank(ascending=False, method='dense')
+        return X.merge(hourly_mean[['hour', 'rank']], on='hour', how='left')
+
+
+class MonthlyMeanRankTransformer(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        monthly_mean = train_data.groupby('month')['log_bike_count'].mean().reset_index()
+        monthly_mean['rank_month'] = monthly_mean['log_bike_count'].rank(ascending=False, method='dense')
+        return X.merge(monthly_mean[['month', 'rank_month']], on='month', how='left')
+
+
 class MergeDataTransformer(BaseEstimator, TransformerMixin):
     def __init__(self, dataframe, on, how='left'):
         self.dataframe = dataframe
@@ -204,6 +224,36 @@ class MergeOilDataTransformer(BaseEstimator, TransformerMixin):
         return pd.merge(X, self.oil_data, on=['year', 'month'], how='left')
 
 
+class CustomPredictionTransformer(BaseEstimator, TransformerMixin):
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, predictions):
+        a1 = np.log(1)
+        upper_bound = 0.025
+        predictions = np.where(predictions < upper_bound, a1, predictions)
+
+        bounds = [
+            (np.log(2), 0.025, 0.696),
+            (np.log(3), 0.696, 1.1),
+            (np.log(4), 1.1, 1.388),
+            (np.log(5), 1.388, 1.6096),
+            (np.log(6), 1.6096, 1.793),
+            (np.log(7), 1.793, 1.946),
+        ]
+
+        for a, lower_bound, upper_bound in bounds:
+            predictions = np.where((predictions > lower_bound) & (predictions < upper_bound), a, predictions)
+
+        for i in range(8, 30):
+            log_i = np.log(i)
+            log_i_plus_1 = np.log(i + 1)
+            upper_bound = log_i + 0.001 * (log_i_plus_1 - log_i)
+            predictions = np.where((predictions > lower_bound) & (predictions < upper_bound), log_i, predictions)
+            lower_bound = upper_bound
+
+        return predictions
+
 
 class PredictionTransformer:
     def transform(self, predictions):
@@ -311,19 +361,19 @@ arr_mapping = {
 }
 
 
-tran = pd.read_csv('data/transportation_lines.csv')
-#tran = pd.read_csv(Path("/kaggle/input/externals/transportation_lines.csv"))
+#tran = pd.read_csv('data/transportation_lines.csv')
+tran = pd.read_csv(Path("/kaggle/input/testdata/transportation_lines.csv"))
 tran = external_pre_pipeline.fit_transform(tran)
 
-oil = pd.read_csv('data/oil.csv')
-#oil = pd.read_csv(Path("/kaggle/input/externals/oil.csv"))
+#oil = pd.read_csv('data/oil.csv')
+oil = pd.read_csv(Path("/kaggle/input/testdata/oil.csv"))
 oil = external_pre_pipeline.fit_transform(oil)
 columns_to_scale = ['Price(€/1,000 liters)']
 scaler = StandardScaler()
 oil[columns_to_scale] = scaler.fit_transform(oil[columns_to_scale])
 
-weather_data = pd.read_csv('data/weather.csv')
-#weather_data = pd.read_csv('/kaggle/input/externals/weather.csv')
+#weather_data = pd.read_csv('data/weather.csv')
+weather_data = pd.read_csv('/kaggle/input/testdata/weather.csv')
 
 columns_to_cap = ['temperature_2m (°C)', 'relative_humidity_2m (%)', 'cloud_cover (%)', 'wind_speed_10m (km/h)']
 columns_to_scale = ['temperature_2m (°C)', 'relative_humidity_2m (%)', 'cloud_cover (%)', 'wind_speed_10m (km/h)']
@@ -334,6 +384,8 @@ weather = external_pre_pipeline.fit_transform(weather)
 
 
 pipeline_external = Pipeline([
+    ('hourly_mean_rank', HourlyMeanRankTransformer()),
+    ('monthly_mean_rank', MonthlyMeanRankTransformer()),
     ('merge_data', MergeDataTransformer(tran, on='site_name')),
     ('array_mapping', ArrayMappingTransformer(arr_mapping)),
     ('confinement_flag', ConfinementFlagTransformer()),
@@ -341,14 +393,14 @@ pipeline_external = Pipeline([
     ('merge_oil', MergeOilDataTransformer(oil))
 ])
 
-data = pd.read_parquet(Path("data/train.parquet"))
-#data = pd.read_parquet(Path("/kaggle/input/mdsb-2023/train.parquet"))
+#data = pd.read_parquet(Path("data/train.parquet"))
+data = pd.read_parquet(Path("/kaggle/input/mdsb-2023/train.parquet"))
 
 train_data = pipeline_train.fit_transform(data)
 train_data.sort_values('date', inplace=True)
 
-final_test = pd.read_parquet(Path("data/final_test.parquet"))
-#final_test = pd.read_parquet(Path("/kaggle/input/mdsb-2023/final_test.parquet"))
+#final_test = pd.read_parquet(Path("data/final_test.parquet"))
+final_test = pd.read_parquet(Path("/kaggle/input/mdsb-2023/final_test.parquet"))
 
 test_data = pipeline_test.fit_transform(final_test)
 
@@ -410,6 +462,10 @@ estimators = [('lgb', lgb.LGBMRegressor(n_estimators=1000)),
               ('dst', DecisionTreeRegressor())
               ]
 
+
+
+# %% [code]
+
 stacking_model = StackingRegressor(estimators=estimators,
                                    final_estimator=GradientBoostingRegressor(random_state=42))
 stacking_model.fit(X_train, y_train)
@@ -427,7 +483,17 @@ predictions_df = pd.DataFrame({
     'original_index': test_data['original_index'],
     'log_bike_count': ensemble
 })
+
+
 submission_df = predictions_df.sort_values(by='original_index').reset_index(drop=True)
+
+
+# Create a final submission DataFrame with 'Id' and 'log_bike_count'
+final_submission = submission_df.rename(columns={'original_index': 'Id'})
+final_submission.to_csv('submission.csv', index=False)
+submission_df = predictions_df.sort_values(by='original_index').reset_index(drop=True)
+
+
 # Create a final submission DataFrame with 'Id' and 'log_bike_count'
 final_submission = submission_df.rename(columns={'original_index': 'Id'})
 final_submission.to_csv('submission.csv', index=False)
