@@ -208,10 +208,20 @@ class MergeWeatherTransformer(BaseEstimator, TransformerMixin):
 
     def fit(self, X, y=None):
         return self
-    
+
     def transform(self, X):
         X = pd.merge(X, self.weather_data, on='date', how='left')
         return X
+
+class MergeOilDataTransformer(BaseEstimator, TransformerMixin):
+    def __init__(self, oil_data):
+        self.oil_data = oil_data
+
+    def fit(self, X, y=None):
+        return self
+
+    def transform(self, X):
+        return pd.merge(X, self.oil_data, on=['year', 'month'], how='left')
 
 
 class CustomPredictionTransformer(BaseEstimator, TransformerMixin):
@@ -322,9 +332,6 @@ external_pre_pipeline = Pipeline([
 ])
 
 
-columns_to_cap = ['temperature_2m (°C)', 'relative_humidity_2m (%)', 'cloud_cover (%)', 'wind_speed_10m (km/h)']
-columns_to_scale = ['temperature_2m (°C)', 'relative_humidity_2m (%)', 'cloud_cover (%)', 'wind_speed_10m (km/h)']
-
 
 arr_mapping = {
     16: [34, 35, 6, 7, 32, 33],
@@ -343,12 +350,23 @@ arr_mapping = {
 }
 
 
-#tran = pd.read_csv('data/transportation_lines.csv')
-tran = pd.read_csv(Path("/kaggle/input/externals/transportation_lines.csv"))
+tran = pd.read_csv('data/transportation_lines.csv')
+#tran = pd.read_csv(Path("/kaggle/input/externals/transportation_lines.csv"))
 tran = external_pre_pipeline.fit_transform(tran)
 
-#weather_data = pd.read_csv('data/weather.csv')
-weather_data = pd.read_csv('/kaggle/input/externals/weather.csv')
+oil = pd.read_csv('data/oil.csv')
+#oil = pd.read_csv(Path("/kaggle/input/externals/oil.csv"))
+oil = external_pre_pipeline.fit_transform(oil)
+columns_to_scale = ['Price(€/1,000 liters)']
+scaler = StandardScaler()
+oil[columns_to_scale] = scaler.fit_transform(oil[columns_to_scale])
+
+weather_data = pd.read_csv('data/weather.csv')
+#weather_data = pd.read_csv('/kaggle/input/externals/weather.csv')
+
+columns_to_cap = ['temperature_2m (°C)', 'relative_humidity_2m (%)', 'cloud_cover (%)', 'wind_speed_10m (km/h)']
+columns_to_scale = ['temperature_2m (°C)', 'relative_humidity_2m (%)', 'cloud_cover (%)', 'wind_speed_10m (km/h)']
+
 weather_transformer = WeatherDataTransformer(columns_to_cap, columns_to_scale)
 weather = weather_transformer.fit_transform(weather_data)
 weather = external_pre_pipeline.fit_transform(weather)
@@ -360,17 +378,18 @@ pipeline_external = Pipeline([
     ('merge_data', MergeDataTransformer(tran, on='site_name')),
     ('array_mapping', ArrayMappingTransformer(arr_mapping)),
     ('confinement_flag', ConfinementFlagTransformer()),
-    ('merge_weather', MergeWeatherTransformer(weather))
+    ('merge_weather', MergeWeatherTransformer(weather)),
+    ('merge_oil', MergeOilDataTransformer(oil))
 ])
 
-#data = pd.read_parquet(Path("data/train.parquet"))
-data = pd.read_parquet(Path("/kaggle/input/mdsb-2023/train.parquet"))
+data = pd.read_parquet(Path("data/train.parquet"))
+#data = pd.read_parquet(Path("/kaggle/input/mdsb-2023/train.parquet"))
 
 train_data = pipeline_train.fit_transform(data)
 train_data.sort_values('date', inplace=True)
 
-#final_test = pd.read_parquet(Path("data/final_test.parquet"))
-final_test = pd.read_parquet(Path("/kaggle/input/mdsb-2023/final_test.parquet"))
+final_test = pd.read_parquet(Path("data/final_test.parquet"))
+#final_test = pd.read_parquet(Path("/kaggle/input/mdsb-2023/final_test.parquet"))
 
 test_data = pipeline_test.fit_transform(final_test)
 
@@ -384,7 +403,7 @@ test_data = test_data.sort_values(by=["date"]).reset_index(drop=True)
 # Categorize the Various Features
 cat_feats = ["year", "hour", "counter_id", "weekday", "is_weekday", "is_confinement", "is_day",
              "month", "season", "arr"]
-num_feats = ["Lines", "temperature_2m (°C)", "relative_humidity_2m (%)", "cloud_cover (%)", "wind_speed_10m (km/h)"]
+num_feats = ["Lines", "temperature_2m (°C)", "relative_humidity_2m (%)", "cloud_cover (%)", "wind_speed_10m (km/h)",'Price(€/1,000 liters)']
 
 # Force Convert Categorical Features to Category
 for var in cat_feats:
