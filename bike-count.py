@@ -156,7 +156,7 @@ tran = pd.read_csv(Path("/kaggle/input/externals/transportation_lines.csv"))
 train = pd.merge(train_data, tran, on='site_name', how='left')
 train.dropna(subset=['log_bike_count'], inplace=True)
 
-train_data = train_1
+train_data = train
 train_data.loc[train_data['counter_id'].isin([40, 41]), 'Lines'] = 5
 
 # Specific arr values for each counter_id
