@@ -224,15 +224,16 @@ class MergeOilDataTransformer(BaseEstimator, TransformerMixin):
         return pd.merge(X, self.oil_data, on=['year', 'month'], how='left')
 
 
-class CustomPredictionTransformer(BaseEstimator, TransformerMixin):
-    def fit(self, X, y=None):
-        return self
 
+class PredictionTransformer:
     def transform(self, predictions):
+        # Initialize variables
         a1 = np.log(1)
         upper_bound = 0.025
+        # Apply the first transformation
         predictions = np.where(predictions < upper_bound, a1, predictions)
 
+        # Define bounds
         bounds = [
             (np.log(2), 0.025, 0.696),
             (np.log(3), 0.696, 1.1),
@@ -242,43 +243,23 @@ class CustomPredictionTransformer(BaseEstimator, TransformerMixin):
             (np.log(7), 1.793, 1.946),
         ]
 
+        # Apply transformations based on bounds
         for a, lower_bound, upper_bound in bounds:
-            predictions = np.where((predictions > lower_bound) & (predictions < upper_bound), a, predictions)
+            predictions = np.where((predictions > lower_bound) & (predictions <= upper_bound), a, predictions)
 
+        lower_bound = 1.946  # Initialize lower_bound for the next loop
+
+        # Apply transformations for i in range 8 to 30
         for i in range(8, 30):
             log_i = np.log(i)
             log_i_plus_1 = np.log(i + 1)
             upper_bound = log_i + 0.001 * (log_i_plus_1 - log_i)
-            predictions = np.where((predictions > lower_bound) & (predictions < upper_bound), log_i, predictions)
+            predictions = np.where((predictions > lower_bound) & (predictions <= upper_bound), log_i, predictions)
             lower_bound = upper_bound
 
         return predictions
-
-
-def create_categorical_transformer():
-    return Pipeline(steps=[
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))
-    ])
-
-
-def create_model_pipeline(categorical_features, numeric_features, X_train, y_train):
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('cat', create_categorical_transformer(), categorical_features),
-            ('num', 'passthrough', numeric_features)
-        ])
-
-    xgb_model = XGBRegressor(n_estimators=350, learning_rate=0.1, max_depth=12, random_state=42)
-
-    model_pipeline = Pipeline(steps=[
-        ('preprocessor', preprocessor),
-        ('model', xgb_model)
-    ])
-
-    model_pipeline.fit(X_train, y_train)
-    return model_pipeline
-
-
+    
+    
 preprocessor_train = ColumnTransformer(
     transformers=[
         ("date_encoder", DateEncoder(), ["date"]),
@@ -460,6 +441,9 @@ stacking_model.fit(X_train, y_train)
 stacking_pred = stacking_model.predict(X_test)
 lgb_pred = lgb_model.predict(X_test)
 ensemble = stacking_pred * 0.60 + lgb_pred * 0.40
+
+transformer = PredictionTransformer()
+ensemble = transformer.transform(ensemble)
 
 predictions_df = pd.DataFrame({
     'original_index': test_data['original_index'],
