@@ -223,72 +223,6 @@ class MergeOilDataTransformer(BaseEstimator, TransformerMixin):
     def transform(self, X):
         return pd.merge(X, self.oil_data, on=['year', 'month'], how='left')
 
-
-class CustomPredictionTransformer(BaseEstimator, TransformerMixin):
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, predictions):
-        a1 = np.log(1)
-        upper_bound = 0.025
-        predictions = np.where(predictions < upper_bound, a1, predictions)
-
-        bounds = [
-            (np.log(2), 0.025, 0.696),
-            (np.log(3), 0.696, 1.1),
-            (np.log(4), 1.1, 1.388),
-            (np.log(5), 1.388, 1.6096),
-            (np.log(6), 1.6096, 1.793),
-            (np.log(7), 1.793, 1.946),
-        ]
-
-        for a, lower_bound, upper_bound in bounds:
-            predictions = np.where((predictions > lower_bound) & (predictions < upper_bound), a, predictions)
-
-        for i in range(8, 30):
-            log_i = np.log(i)
-            log_i_plus_1 = np.log(i + 1)
-            upper_bound = log_i + 0.001 * (log_i_plus_1 - log_i)
-            predictions = np.where((predictions > lower_bound) & (predictions < upper_bound), log_i, predictions)
-            lower_bound = upper_bound
-
-        return predictions
-
-
-class PredictionTransformer:
-    def transform(self, predictions):
-        # Initialize variables
-        a1 = np.log(1)
-        upper_bound = 0.025
-        # Apply the first transformation
-        predictions = np.where(predictions < upper_bound, a1, predictions)
-
-        # Define bounds
-        bounds = [
-            (np.log(2), 0.025, 0.696),
-            (np.log(3), 0.696, 1.1),
-            (np.log(4), 1.1, 1.388),
-            (np.log(5), 1.388, 1.6096),
-            (np.log(6), 1.6096, 1.793),
-            (np.log(7), 1.793, 1.946),
-        ]
-
-        # Apply transformations based on bounds
-        for a, lower_bound, upper_bound in bounds:
-            predictions = np.where((predictions > lower_bound) & (predictions <= upper_bound), a, predictions)
-
-        lower_bound = 1.946  # Initialize lower_bound for the next loop
-
-        # Apply transformations for i in range 8 to 30
-        for i in range(8, 30):
-            log_i = np.log(i)
-            log_i_plus_1 = np.log(i + 1)
-            upper_bound = log_i + 0.001 * (log_i_plus_1 - log_i)
-            predictions = np.where((predictions > lower_bound) & (predictions <= upper_bound), log_i, predictions)
-            lower_bound = upper_bound
-
-        return predictions
-    
     
 preprocessor_train = ColumnTransformer(
     transformers=[
@@ -476,9 +410,6 @@ stacking_pred = stacking_model.predict(X_test)
 lgb_pred = lgb_model.predict(X_test)
 ensemble = stacking_pred * 0.60 + lgb_pred * 0.40
 
-transformer = PredictionTransformer()
-ensemble = transformer.transform(ensemble)
-
 predictions_df = pd.DataFrame({
     'original_index': test_data['original_index'],
     'log_bike_count': ensemble
@@ -486,13 +417,6 @@ predictions_df = pd.DataFrame({
 
 
 submission_df = predictions_df.sort_values(by='original_index').reset_index(drop=True)
-
-
-# Create a final submission DataFrame with 'Id' and 'log_bike_count'
-final_submission = submission_df.rename(columns={'original_index': 'Id'})
-final_submission.to_csv('submission.csv', index=False)
-submission_df = predictions_df.sort_values(by='original_index').reset_index(drop=True)
-
 
 # Create a final submission DataFrame with 'Id' and 'log_bike_count'
 final_submission = submission_df.rename(columns={'original_index': 'Id'})
