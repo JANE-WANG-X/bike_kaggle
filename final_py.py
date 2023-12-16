@@ -2,15 +2,12 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from sklearn.ensemble import BaggingRegressor, RandomForestRegressor, StackingRegressor, GradientBoostingRegressor
 
 from sklearn.preprocessing import FunctionTransformer, OneHotEncoder, LabelEncoder, StandardScaler, RobustScaler
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline, FeatureUnion
 from sklearn.base import BaseEstimator, TransformerMixin
-from sklearn.tree import DecisionTreeRegressor
 
-from xgboost import XGBRegressor
 import lightgbm as lgb
 
 
@@ -213,17 +210,6 @@ class MergeWeatherTransformer(BaseEstimator, TransformerMixin):
         X = pd.merge(X, self.weather_data, on='date', how='left')
         return X
 
-class MergeOilDataTransformer(BaseEstimator, TransformerMixin):
-    def __init__(self, oil_data):
-        self.oil_data = oil_data
-
-    def fit(self, X, y=None):
-        return self
-
-    def transform(self, X):
-        return pd.merge(X, self.oil_data, on=['year', 'month'], how='left')
-
-    
 preprocessor_train = ColumnTransformer(
     transformers=[
         ("date_encoder", DateEncoder(), ["date"]),
@@ -295,19 +281,12 @@ arr_mapping = {
 }
 
 
-#tran = pd.read_csv('data/transportation_lines.csv')
-tran = pd.read_csv(Path("/kaggle/input/testdata/transportation_lines.csv"))
+tran = pd.read_csv('data/transportation_lines.csv')
+#tran = pd.read_csv(Path("/kaggle/input/testdata/transportation_lines.csv"))
 tran = external_pre_pipeline.fit_transform(tran)
 
-#oil = pd.read_csv('data/oil.csv')
-oil = pd.read_csv(Path("/kaggle/input/testdata/oil.csv"))
-oil = external_pre_pipeline.fit_transform(oil)
-columns_to_scale = ['Price(€/1,000 liters)']
-scaler = StandardScaler()
-oil[columns_to_scale] = scaler.fit_transform(oil[columns_to_scale])
-
-#weather_data = pd.read_csv('data/weather.csv')
-weather_data = pd.read_csv('/kaggle/input/testdata/weather.csv')
+weather_data = pd.read_csv('data/weather.csv')
+#weather_data = pd.read_csv('/kaggle/input/testdata/weather.csv')
 
 columns_to_cap = ['temperature_2m (°C)', 'relative_humidity_2m (%)', 'cloud_cover (%)', 'wind_speed_10m (km/h)']
 columns_to_scale = ['temperature_2m (°C)', 'relative_humidity_2m (%)', 'cloud_cover (%)', 'wind_speed_10m (km/h)']
@@ -316,25 +295,23 @@ weather_transformer = WeatherDataTransformer(columns_to_cap, columns_to_scale)
 weather = weather_transformer.fit_transform(weather_data)
 weather = external_pre_pipeline.fit_transform(weather)
 
-
 pipeline_external = Pipeline([
     ('hourly_mean_rank', HourlyMeanRankTransformer()),
     ('monthly_mean_rank', MonthlyMeanRankTransformer()),
     ('merge_data', MergeDataTransformer(tran, on='site_name')),
     ('array_mapping', ArrayMappingTransformer(arr_mapping)),
     ('confinement_flag', ConfinementFlagTransformer()),
-    ('merge_weather', MergeWeatherTransformer(weather)),
-    ('merge_oil', MergeOilDataTransformer(oil))
+    ('merge_weather', MergeWeatherTransformer(weather))
 ])
 
-#data = pd.read_parquet(Path("data/train.parquet"))
-data = pd.read_parquet(Path("/kaggle/input/mdsb-2023/train.parquet"))
+data = pd.read_parquet(Path("data/train.parquet"))
+#data = pd.read_parquet(Path("/kaggle/input/mdsb-2023/train.parquet"))
 
 train_data = pipeline_train.fit_transform(data)
 train_data.sort_values('date', inplace=True)
 
-#final_test = pd.read_parquet(Path("data/final_test.parquet"))
-final_test = pd.read_parquet(Path("/kaggle/input/mdsb-2023/final_test.parquet"))
+final_test = pd.read_parquet(Path("data/final_test.parquet"))
+#final_test = pd.read_parquet(Path("/kaggle/input/mdsb-2023/final_test.parquet"))
 
 test_data = pipeline_test.fit_transform(final_test)
 
@@ -348,7 +325,7 @@ test_data = test_data.sort_values(by=["date"]).reset_index(drop=True)
 # Categorize the Various Features
 cat_feats = ["year", "hour", "counter_id", "weekday", "is_weekday", "is_confinement", "is_day",
              "month", "season", "arr"]
-num_feats = ["Lines", "temperature_2m (°C)", "relative_humidity_2m (%)", "cloud_cover (%)", "wind_speed_10m (km/h)",'Price(€/1,000 liters)']
+num_feats = ["Lines", "temperature_2m (°C)", "relative_humidity_2m (%)", "cloud_cover (%)", "wind_speed_10m (km/h)"]
 
 # Force Convert Categorical Features to Category
 for var in cat_feats:
@@ -369,50 +346,16 @@ X_train = scaler.fit_transform(X_train)
 X_test = scaler.transform(X_test)
 
 
-# #### DecisionTreeRegressor
-
-dtr_model = DecisionTreeRegressor()
-dtr_model.fit(X_train, y_train)
-
-# #### BaggingRegressor
-
-bagging_model = BaggingRegressor()
-bagging_model.fit(X_train, y_train)
-
-
-# #### RandomForestRegressor
-
-rf_model = RandomForestRegressor()
-rf_model.fit(X_train, y_train)
-
 # #### LightGBM
 
 lgb_model = lgb.LGBMRegressor(n_estimators=1000)
 lgb_model.fit(X_train, y_train)
 
-estimators = [('lgb', lgb.LGBMRegressor(n_estimators=1000)),
-              ('rf', RandomForestRegressor()),
-              ('bagging', BaggingRegressor()),
-              ('dst', DecisionTreeRegressor())
-              ]
-
-
-
-# %% [code]
-
-stacking_model = StackingRegressor(estimators=estimators,
-                                   final_estimator=GradientBoostingRegressor(random_state=42))
-stacking_model.fit(X_train, y_train)
-
-# # Predictition
-
-stacking_pred = stacking_model.predict(X_test)
-lgb_pred = lgb_model.predict(X_test)
-ensemble = stacking_pred * 0.60 + lgb_pred * 0.40
+predictions = lgb_model.predict(X_test)
 
 predictions_df = pd.DataFrame({
     'original_index': test_data['original_index'],
-    'log_bike_count': ensemble
+    'log_bike_count': predictions
 })
 
 
@@ -421,3 +364,4 @@ submission_df = predictions_df.sort_values(by='original_index').reset_index(drop
 # Create a final submission DataFrame with 'Id' and 'log_bike_count'
 final_submission = submission_df.rename(columns={'original_index': 'Id'})
 final_submission.to_csv('submission.csv', index=False)
+
